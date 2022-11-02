@@ -1,7 +1,7 @@
-# FTP-list
+# FTP-list-select-download
 
 Gets list of remote file paths in FTP directory recursively.
 
-Pattern based selection (glob-like) is available with ```fnmatch```
+Selects files based on pattern (glob-like).
 
 Downloads list of remote files to local folder (flattened path).
