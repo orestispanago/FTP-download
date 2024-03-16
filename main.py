@@ -2,6 +2,9 @@ import fnmatch
 from ftplib import FTP
 import datetime
 import os
+import logging
+import logging.config
+import traceback
 
 
 FTP_IP = ""
@@ -9,17 +12,22 @@ FTP_USER = ""
 FTP_PASS = ""
 FTP_DIR = "/dataloggers/rsi"
 
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
+
+logging.config.fileConfig("logging.conf", disable_existing_loggers=False)
+logger = logging.getLogger(__name__)
+
 
 def list_recursive(ftp, remotedir, file_entries, ignore_pattern="*.dat"):
     ftp.cwd(remotedir)
     for entry in ftp.mlsd():
         remote_path = remotedir + "/" + entry[0]
         if entry[1]["type"] == "dir":
-            print("Found FTP dir:", remote_path)
+            logger.debug(f"Found FTP dir: {remote_path}")
             list_recursive(ftp, remote_path, file_entries)
         elif entry[1]["type"] == "file":
             if fnmatch.fnmatch(entry[0], ignore_pattern):
-                print(f"Ignored FTP entry: {entry[0]}")
+                logger.debug(f"Ignored FTP entry: {entry[0]}")
                 continue
             remote_entry = {"remote_path": remote_path, "entry": entry}
             file_entries.append(remote_entry)
@@ -29,6 +37,7 @@ def get_remote_entries(ftp_dir=FTP_DIR):
     remote_entries = []
     with FTP(FTP_IP, FTP_USER, FTP_PASS) as ftp:
         list_recursive(ftp, ftp_dir, remote_entries)
+    logger.debug(f"Found {len(remote_entries)} entries at FTP")
     return remote_entries
 
 
@@ -39,7 +48,7 @@ def download(remote_paths, local_folder):
             local_path = f"{local_folder}/{flat_path}"
             with open(local_path, "wb") as f:
                 ftp.retrbinary("RETR " + remote_path, f.write)
-            print("Downloaded file:", local_path)
+            logger.debug(f"Downloaded file: {local_path}")
 
 
 def download_if_remote_newer(remote_entries):
@@ -66,10 +75,12 @@ def download_if_remote_newer(remote_entries):
             os.makedirs(os.path.dirname(local_path), exist_ok=True)
             with open(local_path, "wb") as f:
                 ftp.retrbinary("RETR " + remote_path, f.write)
-            print("Downloaded file:", local_path)
+            logger.debug(f"Downloaded file: {local_path}")
             os.utime(local_path, (remote_mod_timestamp, remote_mod_timestamp))
             downloaded_counter += 1
-    print(f"Downloaded {downloaded_counter}, skipped {skipped_counter} files")
+    logger.info(
+        f"Downloaded {downloaded_counter}, skipped {skipped_counter} files"
+    )
 
 
 def rename(remote_paths, prefix=""):
@@ -79,7 +90,7 @@ def rename(remote_paths, prefix=""):
             if not base_name.startswith(prefix):
                 dest_path = src_path.replace(base_name, f"{prefix}{base_name}")
                 ftp.rename(src_path, dest_path)
-                print(f"Renamed {src_path} to {dest_path}")
+                logger.info(f"Renamed {src_path} to {dest_path}")
 
 
 def modified_str_to_utc(modified_str):
@@ -88,16 +99,14 @@ def modified_str_to_utc(modified_str):
     return modified_utc
 
 
-remote_entries = get_remote_entries()
+def main():
+    remote_entries = get_remote_entries(ftp_dir="/dataloggers/koukouli")
+    download_if_remote_newer(remote_entries)
+    logger.debug(f"{'-' * 15} SUCCESS {'-' * 15}")
 
-download_if_remote_newer(remote_entries)
 
-
-## Glob-like selection and download example
-# remote_paths = [entry["remote_path"] for entry in remote_entries]
-# csv_files = fnmatch.filter(remote_paths, "*x90_y90.csv")
-# img_files = fnmatch.filter(remote_paths, "*x90_y90.*g")
-
-# download(csv_files, "downloads")
-
-# rename(remote_paths, prefix="rsi1min_")
+if __name__ == "__main__":
+    try:
+        main()
+    except:
+        logger.error("uncaught exception: %s", traceback.format_exc())
