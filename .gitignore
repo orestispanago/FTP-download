@@ -2,3 +2,5 @@
 *.txt
 *.csv
 *.log
+
+__pycache__/

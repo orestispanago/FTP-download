@@ -1,21 +1,34 @@
 import fnmatch
 from ftplib import FTP
 import datetime
+import time
 import os
 import logging
 import logging.config
 import traceback
-
+import pandas as pd
+from mailer import send_mail
+from models import RemoteFile, RemoteFolder
 
 FTP_IP = ""
 FTP_USER = ""
 FTP_PASS = ""
-FTP_DIR = "/dataloggers/rsi"
+FTP_DIR = "/dataloggers"
+DATALOGGER_DIRS = [
+    "meteo",
+    "solar",
+]
 
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 logging.config.fileConfig("logging.conf", disable_existing_loggers=False)
 logger = logging.getLogger(__name__)
+
+
+def get_remote_mod_timestamp(mod_time_str):
+    modified_dt = datetime.datetime.strptime(mod_time_str, "%Y%m%d%H%M%S")
+    modified_dt_tz = modified_dt.replace(tzinfo=datetime.timezone.utc)
+    return modified_dt_tz.timestamp()
 
 
 def list_recursive(ftp, remotedir, file_entries, ignore_pattern="*.dat"):
@@ -29,79 +42,66 @@ def list_recursive(ftp, remotedir, file_entries, ignore_pattern="*.dat"):
             if fnmatch.fnmatch(entry[0], ignore_pattern):
                 logger.debug(f"Ignored FTP entry: {entry[0]}")
                 continue
-            remote_entry = {"remote_path": remote_path, "entry": entry}
-            file_entries.append(remote_entry)
+            mod_time = get_remote_mod_timestamp(entry[1]["modify"])
+            remote_file = RemoteFile(remote_path, mod_time)
+            file_entries.append(remote_file)
 
 
-def get_remote_entries(ftp_dir=FTP_DIR):
-    remote_entries = []
+def get_remote_files(remote_folder):
+    start = time.time()
     with FTP(FTP_IP, FTP_USER, FTP_PASS) as ftp:
-        list_recursive(ftp, ftp_dir, remote_entries)
-    logger.debug(f"Found {len(remote_entries)} entries at FTP")
-    return remote_entries
+        list_recursive(ftp, remote_folder.path, remote_folder.files)
+    remote_folder.ftp_list_time = time.time() - start
+    logger.debug(f"Found {len(remote_folder.files)} entries at FTP")
 
 
-def download(remote_paths, local_folder):
+def select_remote_newer(remote_folder):
+    for entry in remote_folder.files:
+        if os.path.exists(entry.local_path):
+            local_mod_time = os.path.getmtime(entry.local_path)
+            if local_mod_time < entry.mod_time:
+                remote_folder.newer.append(entry)
+        else:
+            remote_folder.newer.append(entry)
+
+
+def download(remote_folder):
     with FTP(FTP_IP, FTP_USER, FTP_PASS) as ftp:
-        for remote_path in remote_paths:
-            flat_path = remote_path.replace("/", "")
-            local_path = f"{local_folder}/{flat_path}"
-            with open(local_path, "wb") as f:
-                ftp.retrbinary("RETR " + remote_path, f.write)
-            logger.debug(f"Downloaded file: {local_path}")
+        for remote_file in remote_folder.newer:
+            os.makedirs(os.path.dirname(remote_file.local_path), exist_ok=True)
+            with open(remote_file.local_path, "wb") as f:
+                ftp.retrbinary("RETR " + remote_file.path, f.write)
+            logger.debug(f"Downloaded file: {remote_file.local_path}")
+            os.utime(
+                remote_file.local_path,
+                (remote_file.mod_time, remote_file.mod_time),
+            )
+            remote_folder.downloaded.append(remote_file)
+    logger.debug(f"Downloaded {len(remote_folder.files)} files")
 
 
-def download_if_remote_newer(remote_entries):
-    with FTP(FTP_IP, FTP_USER, FTP_PASS) as ftp:
-        skipped_counter = 0
-        downloaded_counter = 0
-        for remote_entry in remote_entries:
-            remote_path = remote_entry["remote_path"]
-            remote_mod_time_str = remote_entry["entry"][1]["modify"]
-            remote_mod_time = modified_str_to_utc(remote_mod_time_str)
-            remote_mod_timestamp = remote_mod_time.timestamp()
-            local_path = remote_path[1:]
-            if os.path.exists(local_path):
-                local_mod_time = os.path.getmtime(local_path)
-                local_mod_time = datetime.datetime.fromtimestamp(
-                    local_mod_time, tz=datetime.timezone.utc
-                )
-                local_mod_time_tz = local_mod_time.replace(
-                    tzinfo=datetime.timezone.utc
-                )
-                if local_mod_time_tz == remote_mod_time:
-                    skipped_counter += 1
-                    continue
-            os.makedirs(os.path.dirname(local_path), exist_ok=True)
-            with open(local_path, "wb") as f:
-                ftp.retrbinary("RETR " + remote_path, f.write)
-            logger.debug(f"Downloaded file: {local_path}")
-            os.utime(local_path, (remote_mod_timestamp, remote_mod_timestamp))
-            downloaded_counter += 1
-    logger.info(
-        f"Downloaded {downloaded_counter}, skipped {skipped_counter} files"
-    )
-
-
-def rename(remote_paths, prefix=""):
-    with FTP(FTP_IP, FTP_USER, FTP_PASS) as ftp:
-        for src_path in remote_paths:
-            base_name = src_path.split("/")[-1]
-            if not base_name.startswith(prefix):
-                dest_path = src_path.replace(base_name, f"{prefix}{base_name}")
-                ftp.rename(src_path, dest_path)
-                logger.info(f"Renamed {src_path} to {dest_path}")
-
-
-def modified_str_to_utc(modified_str):
-    modified_dt = datetime.datetime.strptime(modified_str, "%Y%m%d%H%M%S")
-    modified_utc = modified_dt.replace(tzinfo=datetime.timezone.utc)
-    return modified_utc
+def download_newer(remote_folder):
+    get_remote_files(remote_folder)
+    select_remote_newer(remote_folder)
+    start = time.time()
+    try:
+        download(remote_folder)
+        remote_folder.download_time = time.time() - start
+    except TimeoutError:
+        logger.error(f"TimeoutError")
+        remote_folder.download_time = time.time() - start
 
 
 def main():
-    remote_entries = get_remote_entries(ftp_dir="/dataloggers/koukouli")
-    download_if_remote_newer(remote_entries)
+    summaries = []
+    for datalogger_dir in DATALOGGER_DIRS:
+        ftp_dir = f"/dataloggers/{datalogger_dir}"
+        rf = RemoteFolder(ftp_dir)
+        download_newer(rf)
+        summaries.append(rf.summary())
+    df = pd.DataFrame(summaries)
+    print(df)
+    send_mail(subject="NAS backup report", html_table=df.to_html(index=False))
     logger.debug(f"{'-' * 15} SUCCESS {'-' * 15}")
 
 
