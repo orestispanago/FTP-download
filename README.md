@@ -1,21 +1,21 @@
-# FTP-list-select-download
+# FTP-download
 
-Gets list of remote file paths in FTP directory recursively.
+Incremental download fron FTP server.
 
-Selects files based on pattern (glob-like).
+## Raspberry-Pi setup
 
-Downloads list of remote files to local folder (flattened path).
+To auto-mount an external HDD on the Pi:
 
-Renames remote files (adding prefix). Renaming requires FTP write permissions.
+1. Use ```blkid``` to get the HDD's UUID:
 
+2. Add the following line to ```/etc/fstab```:
 
-```python
-## Glob-like selection and download example
-remote_paths = [entry["remote_path"] for entry in remote_entries]
-csv_files = fnmatch.filter(remote_paths, "*x90_y90.csv")
-img_files = fnmatch.filter(remote_paths, "*x90_y90.*g")
+```
+UUID=YourUUID /media/external auto nosuid,nodev,nofail,rw,user,exec,umask=000 0 0
+```
 
-download(csv_files, "downloads")
+3. To run every day at 09:01 UTC use:
 
-rename(remote_paths, prefix="rsi1min_")
+```
+1 9 * * * python3 ~/FTP-alerts/main.py
 ```
