@@ -24,6 +24,7 @@ DATALOGGER_DIRS = [
     "nilu",
     "rsi",
     "solar",
+    "suntracker",
     "thermi-noise",
 ]
 IGNORE_DIRS = "[0-9][0-3]"
@@ -70,7 +71,9 @@ def list_remote_files(remote_folder):
 
 def select_remote_newer(remote_folder):
     for remote_file in remote_folder.remote_files:
-        remote_file.set_download_location(local_folder=remote_folder.local_folder)
+        remote_file.set_download_location(
+            local_folder=remote_folder.local_folder
+        )
         if os.path.exists(remote_file.local_path):
             local_mod_time = os.path.getmtime(remote_file.local_path)
             if local_mod_time < remote_file.mod_time:
@@ -116,17 +119,22 @@ def ftp_online():
 
 def main():
     if ftp_online():
-        summaries = []
+        rows = []
         for datalogger_dir in DATALOGGER_DIRS:
             ftp_dir = f"/dataloggers/{datalogger_dir}"
             remote_folder = RemoteFolder(
                 ftp_dir, IGNORE_DIRS, IGNORE_FILES, local_folder=DOWNLOAD_DIR
             )
             download_newer(remote_folder)
-            summaries.append(remote_folder.summary())
-        df = pd.DataFrame(summaries)
-        print(df)
-        send_mail(subject="NAS backup report", html_table=df.to_html(index=False))
+            rows.append(remote_folder.summary())
+        report = pd.DataFrame(rows)
+        print(report)
+        utcnow = datetime.datetime.now(tz=datetime.timezone.utc)
+        date_time = datetime.datetime.strftime(utcnow, "%Y%m%d_%H%M%S")
+        report.to_csv(f"reports/report_{date_time}.csv", index=False)
+        send_mail(
+            subject="NAS backup report", html_table=report.to_html(index=False)
+        )
     else:
         send_mail(subject="NAS offline")
     logger.debug(f"{'-' * 15} SUCCESS {'-' * 15}")
