@@ -2,6 +2,16 @@
 
 Incremental download fron FTP server.
 
+## Setup
+
+```
+sudo apt install python3-dotenv
+cp .env.example .env
+chmod 600 .env
+```
+
+Set the real values in `.env` (FTP and email credentials), replacing the placeholders. It is in `.gitignore`. Email recipients are in `mailer.py`.
+
 ## Raspberry-Pi setup
 
 To auto-mount an external HDD on the Pi:

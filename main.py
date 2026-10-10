@@ -7,12 +7,10 @@ import logging
 import logging.config
 import traceback
 import pandas as pd
+from config import FTP_IP, FTP_PASS, FTP_USER
 from mailer import send_mail
 from models import RemoteFile, RemoteFolder
 
-FTP_IP = ""
-FTP_USER = ""
-FTP_PASS = ""
 FTP_DIR = "/dataloggers"
 DATALOGGER_DIRS = [
     "eko-ms711",
@@ -25,9 +23,8 @@ DATALOGGER_DIRS = [
     "rsi",
     "solar",
     "suntracker",
-    "thermi-noise",
 ]
-IGNORE_DIRS = "[0-9][0-3]"
+IGNORE_DIRS = ""
 IGNORE_FILES = "*.dat"
 DOWNLOAD_DIR = "/media/external/FTP-backup"
 

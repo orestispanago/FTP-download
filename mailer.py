@@ -6,9 +6,9 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import format_datetime
 
-EMAIL_USER = ""
-EMAIL_PASS = ""
-EMAIL_RECIPIENTS = [""]
+from config import EMAIL_PASS, EMAIL_USER
+
+EMAIL_RECIPIENTS = ["orestis.panagopou@upatras.gr", "jvamva@hotmail.com"]
 
 logger = logging.getLogger(__name__)
 
