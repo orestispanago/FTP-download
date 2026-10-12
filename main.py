@@ -13,6 +13,7 @@ from models import RemoteFile, RemoteFolder
 
 FTP_DIR = "/dataloggers"
 DATALOGGER_DIRS = [
+    "aigio",
     "eko-ms711",
     "eko-ms711-dni",
     "kintrex",
