@@ -1,12 +1,14 @@
-import fnmatch
-from ftplib import FTP
 import datetime
-import time
-import os
+import fnmatch
 import logging
 import logging.config
+import os
+import time
 import traceback
+from ftplib import FTP
+
 import pandas as pd
+
 from config import FTP_IP, FTP_PASS, FTP_USER
 from mailer import send_mail
 from models import RemoteFile, RemoteFolder
@@ -24,6 +26,7 @@ DATALOGGER_DIRS = [
     "rsi",
     "solar",
     "suntracker",
+    "network-monitor",
 ]
 IGNORE_DIRS = ""
 IGNORE_FILES = "*.dat"
